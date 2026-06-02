@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom'
 import Home from './pages/Home'
 import Pacers from './pages/Pacers'
+import CrewView from './pages/CrewView'
 
 function Nav() {
   const location = useLocation()
@@ -24,6 +25,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/pacers" element={<Pacers />} />
+        <Route path="/crew/:token" element={<CrewView />} />
       </Routes>
     </BrowserRouter>
   )

@@ -51,4 +51,13 @@ router.get('/race/:id/stations', (req, res) => {
   res.json({ race, stations })
 })
 
+router.get('/crew/:token', (req, res) => {
+  const race = db.prepare('SELECT * FROM races WHERE share_token = ?').get(req.params.token)
+  if (!race) {
+    return res.status(404).json({ error: 'Race not found' })
+  }
+  const stations = db.prepare('SELECT * FROM stations WHERE race_id = ? ORDER BY distance ASC').all(race.id)
+  res.json({ race, stations })
+})
+
 module.exports = router
