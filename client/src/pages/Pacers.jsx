@@ -1,139 +1,118 @@
-import { useState, useEffect } from 'react'
-import axios from 'axios'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { api } from '../api'
+import { useAuth } from '../auth'
 
-function Pacers() {
-  const [listings, setListings] = useState([])
+const emptyForm = {
+  type: 'needed', race_name: '', race_date: '', miles_start: '', miles_end: '',
+  experience: '', contact: '', notes: '',
+}
+
+export default function Pacers() {
+  const { user } = useAuth()
+  const [listings, setListings] = useState(null)
   const [search, setSearch] = useState('')
-  const [form, setForm] = useState({
-    type: 'needed',
-    race_name: '',
-    race_date: '',
-    miles_start: '',
-    miles_end: '',
-    experience: '',
-    contact: '',
-    notes: ''
-  })
+  const [filter, setFilter] = useState('all')
+  const [form, setForm] = useState(emptyForm)
+  const [showForm, setShowForm] = useState(false)
+  const [error, setError] = useState('')
 
-  useEffect(() => {
-    fetchListings()
-  }, [])
+  const load = () => api.get('/pacers').then(setListings).catch(err => setError(err.message))
+  // Re-fetch when login state changes so "mine" flags are correct.
+  useEffect(() => { load() }, [user?.id])
 
-  function fetchListings() {
-    axios.get('http://localhost:3000/pacers')
-      .then(res => setListings(res.data))
-      .catch(err => console.error(err))
+  async function submit(e) {
+    e.preventDefault()
+    setError('')
+    try {
+      await api.post('/pacers', form)
+      setForm(emptyForm)
+      setShowForm(false)
+      load()
+    } catch (err) {
+      setError(err.message)
+    }
   }
 
-  function handleSubmit() {
-    if (!form.race_name || !form.contact) return
-    axios.post('http://localhost:3000/pacers', form)
-      .then(() => {
-        fetchListings()
-        setForm({
-          type: 'needed', race_name: '', race_date: '',
-          miles_start: '', miles_end: '', experience: '',
-          contact: '', notes: ''
-        })
-      })
-      .catch(err => console.error(err))
+  async function remove(listing) {
+    if (!confirm('Remove this listing?')) return
+    await api.del(`/pacers/${listing.id}`)
+    load()
   }
 
-  function update(field, value) {
-    setForm({ ...form, [field]: value })
-  }
+  const set = field => e => setForm({ ...form, [field]: e.target.value })
+  const filtered = (listings ?? []).filter(l =>
+    l.race_name.toLowerCase().includes(search.toLowerCase()) && (filter === 'all' || l.type === filter))
 
-  const filtered = listings.filter(l =>
-    l.race_name.toLowerCase().includes(search.toLowerCase())
-  )
+  const miles = l => l.miles_start != null && l.miles_end != null
+    ? `Miles ${l.miles_start}–${l.miles_end}`
+    : l.miles_start != null ? `From mile ${l.miles_start}` : null
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1>Pacer Finder</h1>
-        <p>Find a pacer or offer to pace at an upcoming race</p>
+      <div className="page-header row-between">
+        <div>
+          <h1>Pacer Finder</h1>
+          <p>Find a pacer or offer to pace at an upcoming race</p>
+        </div>
+        {!showForm && (user
+          ? <button className="btn" onClick={() => setShowForm(true)}>+ Post Listing</button>
+          : <Link to="/login" state={{ from: '/pacers' }} className="btn btn-ghost">Log In to Post</Link>)}
       </div>
 
-      <div className="form-card">
-        <h3>Post a Listing</h3>
-        <br />
-
-        <div className="form-field">
-          <label>I am...</label>
-          <select value={form.type} onChange={e => update('type', e.target.value)}>
-            <option value="needed">Looking for a pacer</option>
-            <option value="available">Available to pace</option>
-          </select>
-        </div>
-
-        <div className="form-grid">
+      {showForm && (
+        <form className="form-card" onSubmit={submit}>
+          <h3>Post a Listing</h3>
           <div className="form-field">
-            <label>Race Name</label>
-            <input placeholder="Leadville 100" value={form.race_name}
-              onChange={e => update('race_name', e.target.value)} />
+            <label>I am…</label>
+            <select value={form.type} onChange={set('type')}>
+              <option value="needed">Looking for a pacer</option>
+              <option value="available">Available to pace</option>
+            </select>
           </div>
-          <div className="form-field">
-            <label>Race Date</label>
-            <input placeholder="August 2026" value={form.race_date}
-              onChange={e => update('race_date', e.target.value)} />
+          <div className="form-grid">
+            <div className="form-field"><label>Race Name</label><input required placeholder="Leadville 100" value={form.race_name} onChange={set('race_name')} /></div>
+            <div className="form-field"><label>Race Date</label><input placeholder="August 2027" value={form.race_date} onChange={set('race_date')} /></div>
+            <div className="form-field"><label>Miles Start</label><input type="number" inputMode="decimal" min="0" step="any" placeholder="50" value={form.miles_start} onChange={set('miles_start')} /></div>
+            <div className="form-field"><label>Miles End</label><input type="number" inputMode="decimal" min="0" step="any" placeholder="100" value={form.miles_end} onChange={set('miles_end')} /></div>
           </div>
-          <div className="form-field">
-            <label>Miles Start</label>
-            <input placeholder="50" value={form.miles_start}
-              onChange={e => update('miles_start', e.target.value)} />
+          <div className="form-field"><label>Experience</label><input placeholder="Ran Leadville twice, know the course well" value={form.experience} onChange={set('experience')} /></div>
+          <div className="form-field"><label>Contact</label><input required placeholder="Email or Instagram handle" value={form.contact} onChange={set('contact')} /></div>
+          <div className="form-field"><label>Notes</label><textarea rows={2} placeholder="Anything else to know" value={form.notes} onChange={set('notes')} /></div>
+          <small className="hint">Your contact info is shown publicly on this listing.</small>
+          {error && <div className="alert alert-error">{error}</div>}
+          <div className="row-gap">
+            <button className="btn-primary">Post Listing</button>
+            <button type="button" className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
           </div>
-          <div className="form-field">
-            <label>Miles End</label>
-            <input placeholder="100" value={form.miles_end}
-              onChange={e => update('miles_end', e.target.value)} />
-          </div>
-        </div>
-
-        <div className="form-field">
-          <label>Experience</label>
-          <input placeholder="Ran Leadville twice, know the course well"
-            value={form.experience} onChange={e => update('experience', e.target.value)} />
-        </div>
-        <div className="form-field">
-          <label>Contact</label>
-          <input placeholder="email or instagram handle"
-            value={form.contact} onChange={e => update('contact', e.target.value)} />
-        </div>
-        <div className="form-field">
-          <label>Notes</label>
-          <input placeholder="anything else to know"
-            value={form.notes} onChange={e => update('notes', e.target.value)} />
-        </div>
-
-        <button className="btn-primary" onClick={handleSubmit}>
-          Post Listing
-        </button>
-      </div>
+        </form>
+      )}
 
       <div className="search-bar">
-        <input placeholder="Search by race name..."
-          value={search} onChange={e => setSearch(e.target.value)} />
+        <input placeholder="Search by race name…" value={search} onChange={e => setSearch(e.target.value)} />
+        <div className="segmented">
+          {[['all', 'All'], ['needed', 'Need Pacer'], ['available', 'Available']].map(([v, label]) => (
+            <button key={v} className={filter === v ? 'active' : ''} onClick={() => setFilter(v)}>{label}</button>
+          ))}
+        </div>
       </div>
 
-      {filtered.length === 0 && (
-        <div className="empty-state">
-          <h3>No Listings Found</h3>
-          <p>Be the first to post for this race</p>
-        </div>
+      {listings === null && <div className="empty-state"><h3>Loading…</h3></div>}
+      {listings && filtered.length === 0 && (
+        <div className="empty-state"><h3>No Listings Found</h3><p>Be the first to post for this race.</p></div>
       )}
 
       {filtered.map(listing => (
         <div key={listing.id} className={`pacer-card ${listing.type}`}>
-          <span className={`tag ${listing.type === 'needed' ? 'tag-orange' : 'tag-blue'}`}>
-            {listing.type === 'needed' ? '🏃 Needs Pacer' : '⚡ Available to Pace'}
-          </span>
-          <div className="pacer-race">{listing.race_name}</div>
-          <div className="pacer-miles">
-            Miles {listing.miles_start}–{listing.miles_end} · {listing.race_date}
+          <div className="row-between">
+            <span className={`tag ${listing.type === 'needed' ? 'tag-orange' : 'tag-blue'}`}>
+              {listing.type === 'needed' ? 'Needs Pacer' : 'Available to Pace'}
+            </span>
+            {listing.mine && <button className="icon-btn" aria-label="Remove listing" onClick={() => remove(listing)}>✕</button>}
           </div>
-          {listing.experience && (
-            <div className="pacer-miles" style={{ marginTop: '6px' }}>{listing.experience}</div>
-          )}
+          <div className="pacer-race">{listing.race_name}</div>
+          <div className="pacer-miles">{[miles(listing), listing.race_date].filter(Boolean).join(' · ')}</div>
+          {listing.experience && <div className="pacer-miles" style={{ marginTop: 6 }}>{listing.experience}</div>}
           <div className="pacer-contact">📬 {listing.contact}</div>
           {listing.notes && <div className="pacer-notes">"{listing.notes}"</div>}
         </div>
@@ -141,5 +120,3 @@ function Pacers() {
     </div>
   )
 }
-
-export default Pacers
