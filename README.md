@@ -30,19 +30,33 @@ npm test              # API tests (auth, ownership, plan limits, crew links)
 
 ## Deploy
 
+The repo ships a `Dockerfile` that builds the web app and runs the server, so it deploys as one service
+on any host that runs containers. SQLite needs a **persistent volume** mounted at `/data`.
+
+### Railway (recommended, about $5/month)
+
+1. Go to railway.com, sign in with GitHub, then choose **New Project → Deploy from GitHub repo → DropBag**.
+   Railway finds `railway.json` and builds with the Dockerfile.
+2. In the service's **Settings → Source**, pick the branch to deploy.
+3. **Variables:** add `JWT_SECRET` set to a long random string (40+ characters).
+4. **Volume:** right-click the service → **Attach volume** → mount path `/data`.
+5. **Settings → Networking → Generate Domain** gives you a public `https://….up.railway.app` URL.
+
+### Anywhere else
+
 ```bash
-npm install && npm run build
-NODE_ENV=production JWT_SECRET=<long random string> npm start
+docker build -t dropbag .
+docker run -p 3000:3000 -e JWT_SECRET=<long random string> -v dropbag-data:/data dropbag
 ```
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `JWT_SECRET` | random in dev | Signs login sessions. **Required in production.** |
-| `PORT` | `3000` | HTTP port |
-| `DB_PATH` | `data/dropbag.db` | SQLite file. Put it on a persistent volume. |
+| `PORT` | `3000` | HTTP port (set automatically by most hosts) |
+| `DB_PATH` | `data/dropbag.db` (`/data/dropbag.db` in Docker) | SQLite file location |
 | `FREE_RACE_LIMIT` | `2` | Races allowed on the Free plan |
 
-Any host with a persistent disk works, for example Render, Railway or Fly.io.
+To load the demo account on a server: `node scripts/seed.js` (demo@dropbag.app / dropbag-demo).
 
 ## Roadmap
 
