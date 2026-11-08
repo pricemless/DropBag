@@ -2,11 +2,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
-import { crewUrl, formatDate } from '../format'
+import { countdown, crewUrl, formatDate, pct } from '../format'
+import Icon from '../icons'
+import { CourseStrip, Empty, Loading, ProgressRing, StationStatus } from '../components'
 
 const emptyStation = { name: '', distance: '', cutoff_time: '', crew_notes: '', crew_access: true }
 
-function StationForm({ initial = emptyStation, submitLabel, onSubmit, onCancel }) {
+function StationForm({ initial = emptyStation, submitLabel, onSubmit, onCancel, onDelete }) {
   const [form, setForm] = useState({ ...emptyStation, ...initial, cutoff_time: initial.cutoff_time ?? '', crew_notes: initial.crew_notes ?? '' })
   const [error, setError] = useState('')
   const set = field => e => setForm({ ...form, [field]: e.target.type === 'checkbox' ? e.target.checked : e.target.value })
@@ -22,40 +24,42 @@ function StationForm({ initial = emptyStation, submitLabel, onSubmit, onCancel }
   }
 
   return (
-    <form className="form-card" onSubmit={submit}>
-      <div className="form-grid">
-        <div className="form-field">
-          <label>Station Name</label>
+    <form className="card pad form" onSubmit={submit}>
+      <div className="grid-2">
+        <div className="field">
+          <label>Station name</label>
           <input required placeholder="Foresthill" value={form.name} onChange={set('name')} autoFocus />
         </div>
-        <div className="form-field">
+        <div className="field">
           <label>Mile</label>
           <input required type="number" inputMode="decimal" min="0" step="any" placeholder="62" value={form.distance} onChange={set('distance')} />
         </div>
       </div>
-      <div className="form-field">
+      <div className="field">
         <label>Cutoff</label>
         <input placeholder="10:45 PM" value={form.cutoff_time} onChange={set('cutoff_time')} />
       </div>
-      <div className="form-field">
-        <label>Crew Notes</label>
+      <div className="field">
+        <label>Notes for your crew</label>
         <textarea rows={3} placeholder="Where to park, what to have ready, pacer pickup…" value={form.crew_notes} onChange={set('crew_notes')} />
       </div>
-      <label className="checkbox">
-        <input type="checkbox" checked={form.crew_access} onChange={set('crew_access')} /> Crew can access this station
+      <label className="toggle">
+        <input type="checkbox" checked={form.crew_access} onChange={set('crew_access')} />
+        <span>Crew can meet me here</span>
       </label>
       {error && <div className="alert alert-error">{error}</div>}
-      <div className="row-gap">
-        <button className="btn-primary">{submitLabel}</button>
+      <div className="actions">
+        <button className="btn btn-primary">{submitLabel}</button>
         {onCancel && <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>}
+        {onDelete && <button type="button" className="btn btn-danger push-right" onClick={onDelete}><Icon name="trash" size={16} /> Delete</button>}
       </div>
     </form>
   )
 }
 
-function DropBag({ station, onChange, onToggle }) {
+function BagItems({ station, onToggle, onChange }) {
+  const [adding, setAdding] = useState(false)
   const [label, setLabel] = useState('')
-  const packed = station.items.filter(i => i.packed).length
 
   async function add(e) {
     e.preventDefault()
@@ -66,11 +70,11 @@ function DropBag({ station, onChange, onToggle }) {
   }
 
   async function toggle(item) {
-    onToggle(item.id, !item.packed) // update the checkbox instantly
+    onToggle(item.id, !item.packed) // feels instant; server catches up
     try {
       await api.patch(`/races/items/${item.id}`, { packed: !item.packed })
     } catch {
-      onChange() // roll back to what the server has
+      onChange()
     }
   }
 
@@ -80,26 +84,29 @@ function DropBag({ station, onChange, onToggle }) {
   }
 
   return (
-    <div className="dropbag">
-      <div className="dropbag-head">
-        <span>DROP BAG</span>
-        {station.items.length > 0 && (
-          <span className={packed === station.items.length ? 'text-green' : ''}>{packed}/{station.items.length} packed</span>
-        )}
-      </div>
+    <div className="items">
       {station.items.map(item => (
-        <div key={item.id} className={`check-item ${item.packed ? 'done' : ''}`}>
-          <label>
-            <input type="checkbox" checked={item.packed} onChange={() => toggle(item)} />
-            <span>{item.label}</span>
-          </label>
-          <button className="icon-btn" aria-label={`Remove ${item.label}`} onClick={() => remove(item)}>✕</button>
-        </div>
+        <span key={item.id} className={`item ${item.packed ? 'packed' : ''}`}>
+          <button className="item-toggle" onClick={() => toggle(item)} aria-pressed={item.packed}>
+            <span className="item-box">{item.packed && <Icon name="check" size={12} />}</span>
+            {item.label}
+          </button>
+          {adding && (
+            <button className="item-remove" aria-label={`Remove ${item.label}`} onClick={() => remove(item)}><Icon name="x" size={12} /></button>
+          )}
+        </span>
       ))}
-      <form className="add-item" onSubmit={add}>
-        <input placeholder="Add item (e.g. dry socks)" value={label} onChange={e => setLabel(e.target.value)} />
-        <button className="btn btn-small" disabled={!label.trim()}>Add</button>
-      </form>
+      {adding ? (
+        <form className="item-add" onSubmit={add}>
+          <input placeholder="Add an item" value={label} onChange={e => setLabel(e.target.value)} autoFocus />
+          <button className="btn btn-primary btn-small" disabled={!label.trim()}>Add</button>
+          <button type="button" className="btn btn-ghost btn-small" onClick={() => { setAdding(false); setLabel('') }}>Done</button>
+        </form>
+      ) : (
+        <button className="item item-new" onClick={() => setAdding(true)}>
+          <Icon name={station.items.length ? 'edit' : 'plus'} size={13} /> {station.items.length ? 'Edit bag' : 'Add bag items'}
+        </button>
+      )}
     </div>
   )
 }
@@ -126,20 +133,21 @@ export default function RaceDetail() {
   }))
 
   if (error && !plan) return (
-    <div className="page"><div className="empty-state"><h3>{error}</h3><p><Link to="/races">Back to my races</Link></p></div></div>
+    <div className="page"><Empty icon="pin" title={error}><p><Link to="/races" className="link">Back to my races</Link></p></Empty></div>
   )
-  if (!plan) return <div className="page"><div className="empty-state"><h3>Loading…</h3></div></div>
+  if (!plan) return <Loading />
 
   const { race, stations } = plan
   const link = crewUrl(race.share_token)
-  const totalItems = stations.reduce((n, s) => n + s.items.length, 0)
-  const packedItems = stations.reduce((n, s) => n + s.items.filter(i => i.packed).length, 0)
+  const allItems = stations.flatMap(s => s.items)
+  const packedCount = allItems.filter(i => i.packed).length
+  const soon = countdown(race.race_date)
 
   async function share() {
-    // iOS / Android: open the native share sheet so the link can go straight to iMessage or WhatsApp.
+    // On iPhone this opens the share sheet, so the link can go straight to Messages.
     if (navigator.share) {
       try {
-        await navigator.share({ title: `${race.name} crew plan`, text: `Crew plan for ${race.name}`, url: link })
+        await navigator.share({ title: `${race.name} crew plan`, text: `Here's my crew plan for ${race.name}`, url: link })
         return
       } catch (err) {
         if (err.name === 'AbortError') return
@@ -151,7 +159,7 @@ export default function RaceDetail() {
   }
 
   async function resetLink() {
-    if (!confirm('Reset the crew link? The old link will stop working.')) return
+    if (!confirm('Make a new crew link? The old one will stop working.')) return
     await api.post(`/races/${race.id}/share-token`)
     load()
   }
@@ -165,9 +173,8 @@ export default function RaceDetail() {
 
   async function saveRace(e) {
     e.preventDefault()
-    const data = Object.fromEntries(new FormData(e.target))
     try {
-      await api.put(`/races/${race.id}`, data)
+      await api.put(`/races/${race.id}`, Object.fromEntries(new FormData(e.target)))
       setEditingRace(false)
       setError('')
       load()
@@ -179,114 +186,124 @@ export default function RaceDetail() {
   async function deleteStation(station) {
     if (!confirm(`Delete ${station.name}?`)) return
     await api.del(`/races/stations/${station.id}`)
+    setEditingStation(null)
     load()
   }
 
   return (
     <div className="page">
-      <Link to="/races" className="back-link">← My Races</Link>
+      <Link to="/races" className="back"><Icon name="back" size={16} /> My races</Link>
 
       {editingRace ? (
-        <form className="form-card" onSubmit={saveRace}>
-          <div className="form-grid">
-            <div className="form-field"><label>Race Name</label><input name="name" required defaultValue={race.name} /></div>
-            <div className="form-field"><label>Distance (miles)</label><input name="distance" type="number" inputMode="decimal" step="any" min="1" required defaultValue={race.distance} /></div>
-            <div className="form-field"><label>Race Date</label><input name="race_date" type="date" defaultValue={race.race_date ?? ''} /></div>
-            <div className="form-field"><label>Location</label><input name="location" defaultValue={race.location ?? ''} /></div>
+        <form className="card pad form" onSubmit={saveRace}>
+          <h3>Edit race</h3>
+          <div className="field"><label>Race name</label><input name="name" required defaultValue={race.name} /></div>
+          <div className="grid-2">
+            <div className="field"><label>Distance (miles)</label><input name="distance" type="number" inputMode="decimal" step="any" min="1" required defaultValue={race.distance} /></div>
+            <div className="field"><label>Race date</label><input name="race_date" type="date" defaultValue={race.race_date ?? ''} /></div>
           </div>
+          <div className="field"><label>Location</label><input name="location" defaultValue={race.location ?? ''} /></div>
           {error && <div className="alert alert-error">{error}</div>}
-          <div className="row-gap">
-            <button className="btn-primary">Save</button>
+          <div className="actions">
+            <button className="btn btn-primary">Save</button>
             <button type="button" className="btn btn-ghost" onClick={() => setEditingRace(false)}>Cancel</button>
-            <button type="button" className="btn btn-danger" onClick={deleteRace}>Delete Race</button>
+            <button type="button" className="btn btn-danger push-right" onClick={deleteRace}><Icon name="trash" size={16} /> Delete race</button>
           </div>
         </form>
       ) : (
-        <div className="page-header row-between">
+        <div className="page-head row-between align-start">
           <div>
+            {(race.race_date || soon) && <div className="eyebrow">{[formatDate(race.race_date, { month: 'short', day: 'numeric' }), soon].filter(Boolean).join(' · ')}</div>}
             <h1>{race.name}</h1>
-            <p>
-              {race.distance} mi
-              {race.race_date && <> · {formatDate(race.race_date)}</>}
-              {race.location && <> · {race.location}</>}
-            </p>
+            <div className="meta">
+              {race.location && <><Icon name="pin" size={14} /> {race.location} · </>}
+              {race.distance} mi · {stations.filter(s => s.crew_access).length} crew stops
+            </div>
           </div>
-          <button className="btn btn-ghost btn-small" onClick={() => setEditingRace(true)}>Edit</button>
+          <button className="icon-btn" aria-label="Edit race" onClick={() => setEditingRace(true)}><Icon name="edit" /></button>
         </div>
       )}
 
-      <div className="share-box">
+      <CourseStrip distance={race.distance} stations={stations} />
+
+      <div className="share-card">
         <div>
-          <div className="share-title">Crew Link</div>
-          <div className="share-url">{link}</div>
-          <div className="hint">Anyone with this link can view the plan. No account needed.</div>
+          <b>Share with your crew</b>
+          <span>They'll see stops, cutoffs and bags. No account needed.</span>
         </div>
-        <div className="row-gap">
-          <button className={`btn btn-small ${copied ? 'btn-success' : ''}`} onClick={share}>
-            {copied ? '✓ Copied' : 'Share With Crew'}
-          </button>
-          <a className="btn btn-ghost btn-small" href={link} target="_blank" rel="noreferrer">Preview</a>
-          <button className="btn btn-ghost btn-small" onClick={resetLink}>Reset</button>
-        </div>
+        <button className="btn btn-on-share" onClick={share}>
+          <Icon name={copied ? 'check' : 'share'} size={16} /> {copied ? 'Copied' : 'Share'}
+        </button>
+      </div>
+      <div className="share-links">
+        <a href={link} target="_blank" rel="noreferrer" className="link small"><Icon name="link" size={14} /> Preview crew view</a>
+        <button className="link small" onClick={resetLink}><Icon name="refresh" size={14} /> New link</button>
       </div>
 
-      <div className="stat-row">
-        <div className="stat"><div className="stat-num">{stations.length}</div><div className="stat-label">Stations</div></div>
-        <div className="stat"><div className="stat-num">{stations.filter(s => s.crew_access).length}</div><div className="stat-label">Crew Access</div></div>
-        <div className="stat">
-          <div className="stat-num">{totalItems ? `${Math.round((packedItems / totalItems) * 100)}%` : '—'}</div>
-          <div className="stat-label">Bags Packed</div>
+      {allItems.length > 0 && (
+        <div className="ring-row">
+          <ProgressRing value={pct(packedCount, allItems.length)} />
+          <div>
+            <b>Drop bags {pct(packedCount, allItems.length)}% packed</b>
+            <div className="muted small">
+              {packedCount === allItems.length ? 'Everything is packed. Nice work.' : `${allItems.length - packedCount} items left across ${stations.filter(s => s.items.some(i => !i.packed)).length} bags`}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="row-between section-head">
-        <h2>Aid Stations</h2>
-        {!adding && <button className="btn btn-small" onClick={() => setAdding(true)}>+ Add Station</button>}
+      <div className="row-between section-row">
+        <h2 className="section-title">Aid stations</h2>
+        {!adding && stations.length > 0 && <button className="btn btn-ghost btn-small" onClick={() => setAdding(true)}><Icon name="plus" size={16} /> Station</button>}
       </div>
 
       {adding && (
         <StationForm
-          submitLabel="Add Station"
+          submitLabel="Add station"
           onCancel={() => setAdding(false)}
           onSubmit={async form => { await api.post(`/races/${race.id}/stations`, form); setAdding(false); load() }}
         />
       )}
 
       {stations.length === 0 && !adding && (
-        <div className="empty-state">
-          <h3>No Stations Yet</h3>
-          <p>Add the aid stations where you'll see your crew or have a drop bag.</p>
-        </div>
+        <Empty icon="pin" title="No aid stations yet">
+          <p>Add the stations where you'll see your crew or have a drop bag.</p>
+          <button className="btn btn-primary" onClick={() => setAdding(true)}><Icon name="plus" /> Add a station</button>
+        </Empty>
       )}
 
-      {stations.map(station => editingStation === station.id ? (
-        <StationForm
-          key={station.id}
-          initial={station}
-          submitLabel="Save Station"
-          onCancel={() => setEditingStation(null)}
-          onSubmit={async form => { await api.put(`/races/stations/${station.id}`, form); setEditingStation(null); load() }}
-        />
-      ) : (
-        <div key={station.id} className="station">
-          <div className="station-top">
-            <div className="station-mile">{station.distance}<span>MILE</span></div>
-            <div className="station-body">
-              <div className="station-name">
-                {station.name}
-                {!station.crew_access && <span className="tag tag-muted">No Crew</span>}
-              </div>
-              {station.cutoff_time && <div className="station-cutoff">⏱ Cutoff {station.cutoff_time}</div>}
-              {station.crew_notes && <div className="station-notes">{station.crew_notes}</div>}
+      <div className="timeline">
+        {stations.map(station => {
+          const done = station.items.length > 0 && station.items.every(i => i.packed)
+          return (
+            <div key={station.id} className={`stop ${done ? 'done' : ''} ${station.crew_access ? '' : 'nocrew'}`}>
+              <div className="stop-dot">{done && <Icon name="check" size={12} />}</div>
+              {editingStation === station.id ? (
+                <StationForm
+                  initial={station}
+                  submitLabel="Save"
+                  onCancel={() => setEditingStation(null)}
+                  onDelete={() => deleteStation(station)}
+                  onSubmit={async form => { await api.put(`/races/stations/${station.id}`, form); setEditingStation(null); load() }}
+                />
+              ) : (
+                <div className="card stop-card">
+                  <div className="row-between">
+                    <h3>{station.name}</h3>
+                    <div className="stop-right">
+                      <span className="mile">Mile {station.distance}</span>
+                      <button className="icon-btn icon-btn-sm" aria-label={`Edit ${station.name}`} onClick={() => setEditingStation(station.id)}><Icon name="edit" size={16} /></button>
+                    </div>
+                  </div>
+                  <StationStatus station={station} />
+                  {station.crew_notes && <p className="note">{station.crew_notes}</p>}
+                  <BagItems station={station} onToggle={setPacked} onChange={load} />
+                </div>
+              )}
             </div>
-            <div className="station-actions">
-              <button className="icon-btn" aria-label="Edit station" onClick={() => setEditingStation(station.id)}>✎</button>
-              <button className="icon-btn" aria-label="Delete station" onClick={() => deleteStation(station)}>✕</button>
-            </div>
-          </div>
-          <DropBag station={station} onChange={load} onToggle={setPacked} />
-        </div>
-      ))}
+          )
+        })}
+      </div>
     </div>
   )
 }

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
+import Icon from '../icons'
+import { Empty, Loading } from '../components'
 
 const emptyForm = {
   type: 'needed', race_name: '', race_date: '', miles_start: '', miles_end: '',
@@ -48,75 +50,76 @@ export default function Pacers() {
     ? `Miles ${l.miles_start}–${l.miles_end}`
     : l.miles_start != null ? `From mile ${l.miles_start}` : null
 
+  if (listings === null && !error) return <Loading />
+
   return (
     <div className="page">
-      <div className="page-header row-between">
+      <div className="page-head row-between">
         <div>
-          <h1>Pacer Finder</h1>
-          <p>Find a pacer or offer to pace at an upcoming race</p>
+          <h1>Pacer finder</h1>
+          <p className="muted">Find a pacer, or help someone finish.</p>
         </div>
         {!showForm && (user
-          ? <button className="btn" onClick={() => setShowForm(true)}>+ Post Listing</button>
-          : <Link to="/login" state={{ from: '/pacers' }} className="btn btn-ghost">Log In to Post</Link>)}
+          ? <button className="btn btn-primary" onClick={() => setShowForm(true)}><Icon name="plus" /> Post</button>
+          : <Link to="/login" state={{ from: '/pacers' }} className="btn btn-ghost">Log in to post</Link>)}
       </div>
 
       {showForm && (
-        <form className="form-card" onSubmit={submit}>
-          <h3>Post a Listing</h3>
-          <div className="form-field">
-            <label>I am…</label>
-            <select value={form.type} onChange={set('type')}>
-              <option value="needed">Looking for a pacer</option>
-              <option value="available">Available to pace</option>
-            </select>
+        <form className="card pad form" onSubmit={submit}>
+          <h3>Post a listing</h3>
+          <div className="segmented segmented-block">
+            <button type="button" className={form.type === 'needed' ? 'active' : ''} onClick={() => setForm({ ...form, type: 'needed' })}>I need a pacer</button>
+            <button type="button" className={form.type === 'available' ? 'active' : ''} onClick={() => setForm({ ...form, type: 'available' })}>I can pace</button>
           </div>
-          <div className="form-grid">
-            <div className="form-field"><label>Race Name</label><input required placeholder="Leadville 100" value={form.race_name} onChange={set('race_name')} /></div>
-            <div className="form-field"><label>Race Date</label><input placeholder="August 2027" value={form.race_date} onChange={set('race_date')} /></div>
-            <div className="form-field"><label>Miles Start</label><input type="number" inputMode="decimal" min="0" step="any" placeholder="50" value={form.miles_start} onChange={set('miles_start')} /></div>
-            <div className="form-field"><label>Miles End</label><input type="number" inputMode="decimal" min="0" step="any" placeholder="100" value={form.miles_end} onChange={set('miles_end')} /></div>
+          <div className="field"><label>Race</label><input required placeholder="Leadville 100" value={form.race_name} onChange={set('race_name')} /></div>
+          <div className="grid-3">
+            <div className="field"><label>When</label><input placeholder="Aug 2027" value={form.race_date} onChange={set('race_date')} /></div>
+            <div className="field"><label>From mile</label><input type="number" inputMode="decimal" min="0" step="any" placeholder="50" value={form.miles_start} onChange={set('miles_start')} /></div>
+            <div className="field"><label>To mile</label><input type="number" inputMode="decimal" min="0" step="any" placeholder="100" value={form.miles_end} onChange={set('miles_end')} /></div>
           </div>
-          <div className="form-field"><label>Experience</label><input placeholder="Ran Leadville twice, know the course well" value={form.experience} onChange={set('experience')} /></div>
-          <div className="form-field"><label>Contact</label><input required placeholder="Email or Instagram handle" value={form.contact} onChange={set('contact')} /></div>
-          <div className="form-field"><label>Notes</label><textarea rows={2} placeholder="Anything else to know" value={form.notes} onChange={set('notes')} /></div>
-          <small className="hint">Your contact info is shown publicly on this listing.</small>
+          <div className="field"><label>Experience</label><input placeholder="Ran Leadville twice, know the course well" value={form.experience} onChange={set('experience')} /></div>
+          <div className="field"><label>How to reach you</label><input required placeholder="Email or Instagram handle" value={form.contact} onChange={set('contact')} /></div>
+          <div className="field"><label>Anything else</label><textarea rows={2} value={form.notes} onChange={set('notes')} /></div>
+          <small className="muted">Your contact info is shown publicly on this listing.</small>
           {error && <div className="alert alert-error">{error}</div>}
-          <div className="row-gap">
-            <button className="btn-primary">Post Listing</button>
+          <div className="actions">
+            <button className="btn btn-primary">Post listing</button>
             <button type="button" className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
           </div>
         </form>
       )}
 
-      <div className="search-bar">
-        <input placeholder="Search by race name…" value={search} onChange={e => setSearch(e.target.value)} />
-        <div className="segmented">
-          {[['all', 'All'], ['needed', 'Need Pacer'], ['available', 'Available']].map(([v, label]) => (
-            <button key={v} className={filter === v ? 'active' : ''} onClick={() => setFilter(v)}>{label}</button>
-          ))}
-        </div>
+      <div className="search">
+        <Icon name="search" size={18} />
+        <input placeholder="Search races" value={search} onChange={e => setSearch(e.target.value)} />
+      </div>
+      <div className="segmented">
+        {[['all', 'All'], ['needed', 'Need a pacer'], ['available', 'Can pace']].map(([v, label]) => (
+          <button key={v} className={filter === v ? 'active' : ''} onClick={() => setFilter(v)}>{label}</button>
+        ))}
       </div>
 
-      {listings === null && <div className="empty-state"><h3>Loading…</h3></div>}
       {listings && filtered.length === 0 && (
-        <div className="empty-state"><h3>No Listings Found</h3><p>Be the first to post for this race.</p></div>
+        <Empty icon="users" title="No listings yet"><p>Be the first to post for this race.</p></Empty>
       )}
 
-      {filtered.map(listing => (
-        <div key={listing.id} className={`pacer-card ${listing.type}`}>
-          <div className="row-between">
-            <span className={`tag ${listing.type === 'needed' ? 'tag-orange' : 'tag-blue'}`}>
-              {listing.type === 'needed' ? 'Needs Pacer' : 'Available to Pace'}
-            </span>
-            {listing.mine && <button className="icon-btn" aria-label="Remove listing" onClick={() => remove(listing)}>✕</button>}
+      <div className="stack">
+        {filtered.map(listing => (
+          <div key={listing.id} className="card pacer">
+            <div className="row-between">
+              <span className={`chip ${listing.type === 'needed' ? 'chip-warn' : 'chip-good'}`}>
+                {listing.type === 'needed' ? 'Needs a pacer' : 'Available to pace'}
+              </span>
+              {listing.mine && <button className="icon-btn icon-btn-sm" aria-label="Remove listing" onClick={() => remove(listing)}><Icon name="trash" size={16} /></button>}
+            </div>
+            <h3>{listing.race_name}</h3>
+            {(miles(listing) || listing.race_date) && <div className="meta">{[miles(listing), listing.race_date].filter(Boolean).join(' · ')}</div>}
+            {listing.experience && <p className="pacer-exp">{listing.experience}</p>}
+            {listing.notes && <p className="note">{listing.notes}</p>}
+            <div className="pacer-contact"><Icon name="mail" size={15} /> {listing.contact}</div>
           </div>
-          <div className="pacer-race">{listing.race_name}</div>
-          <div className="pacer-miles">{[miles(listing), listing.race_date].filter(Boolean).join(' · ')}</div>
-          {listing.experience && <div className="pacer-miles" style={{ marginTop: 6 }}>{listing.experience}</div>}
-          <div className="pacer-contact">📬 {listing.contact}</div>
-          {listing.notes && <div className="pacer-notes">"{listing.notes}"</div>}
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   )
 }

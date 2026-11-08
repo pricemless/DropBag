@@ -73,6 +73,9 @@ test('full race plan: race, stations, drop bag items, crew link', async () => {
   assert.deepEqual(plan.stations.map(s => s.name), ['Robinson Flat', 'Foresthill'])
   assert.equal(plan.stations[1].items[0].packed, true)
 
+  const [listed] = (await api('GET', '/races')).body
+  assert.deepEqual([listed.station_count, listed.item_count, listed.packed_count], [2, 1, 1])
+
   const crew = await client()('GET', `/crew/${race.share_token}`)
   assert.equal(crew.status, 200)
   assert.equal(crew.body.race.name, 'Western States')

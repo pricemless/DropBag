@@ -75,10 +75,12 @@ function racePlan(race) {
 
 router.get('/', (req, res) => {
   const races = db.prepare(`
-    SELECT r.*, COUNT(s.id) AS station_count
-    FROM races r LEFT JOIN stations s ON s.race_id = r.id
+    SELECT r.*,
+      (SELECT COUNT(*) FROM stations s WHERE s.race_id = r.id) AS station_count,
+      (SELECT COUNT(*) FROM bag_items i JOIN stations s ON s.id = i.station_id WHERE s.race_id = r.id) AS item_count,
+      (SELECT COUNT(*) FROM bag_items i JOIN stations s ON s.id = i.station_id WHERE s.race_id = r.id AND i.packed = 1) AS packed_count
+    FROM races r
     WHERE r.user_id = ?
-    GROUP BY r.id
     ORDER BY COALESCE(r.race_date, '9999'), r.created_at DESC
   `).all(req.user.id)
   res.json(races)

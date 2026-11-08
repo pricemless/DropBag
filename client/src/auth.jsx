@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { api } from './api'
+import { Loading } from './components'
 
 const AuthContext = createContext(null)
 
@@ -28,7 +29,7 @@ export const useAuth = () => useContext(AuthContext)
 export function RequireAuth({ children }) {
   const { user } = useAuth()
   const location = useLocation()
-  if (user === undefined) return <div className="page"><div className="empty-state"><h3>Loading…</h3></div></div>
+  if (user === undefined) return <Loading />
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />
   return children
 }
